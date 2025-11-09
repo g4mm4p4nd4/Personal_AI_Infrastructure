@@ -1,0 +1,28 @@
+{
+  "name": "@pai/server",
+  "version": "0.5.0",
+  "description": "Central PAI server with REST API",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/server.ts",
+    "start": "bun src/server.ts",
+    "build": "bun build src/server.ts --outdir dist --target node",
+    "test": "bun test",
+    "gen-cert": "bun scripts/generate-certificates.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@fastify/jwt": "^8.0.0",
+    "@fastify/websocket": "^10.0.1",
+    "fastify": "^4.26.0",
+    "pino": "^8.19.0",
+    "pino-pretty": "^11.0.0",
+    "dotenv": "^16.4.5",
+    "uuid": "^9.0.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/uuid": "^9.0.8"
+  }
+}
