@@ -40,17 +40,130 @@ export class PAICore {
       throw new Error(`Agent "${agentType}" not found`)
     }
 
-    // For now, return a mock response
-    // TODO: Integrate with actual Claude API
+    // Process message through Claude
+    const responseText = await this.processWithClaude(request.message, agentType)
+
+    // Detect activated skills (simple heuristic)
+    const skillsActivated = this.detectActivatedSkills(request.message, responseText)
+
     const response: ChatResponse = {
       sessionId: request.sessionId || this.generateSessionId(),
-      message: `[${agent.name}] Processing: "${request.message}"`,
+      message: responseText,
       agentUsed: agentType,
-      skillsActivated: [],
+      skillsActivated,
       timestamp: new Date(),
     }
 
     return response
+  }
+
+  /**
+   * Process message with Claude API
+   */
+  private async processWithClaude(message: string, agentType: string): Promise<string> {
+    // Use Anthropic API if available
+    const apiKey = process.env.ANTHROPIC_API_KEY
+
+    if (apiKey) {
+      try {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 4096,
+            messages: [
+              {
+                role: 'user',
+                content: message,
+              },
+            ],
+            system: this.getSystemPromptForAgent(agentType),
+          }),
+        })
+
+        if (!response.ok) {
+          const error = await response.text()
+          throw new Error(`Claude API error: ${response.status} - ${error}`)
+        }
+
+        const data = await response.json()
+        return data.content[0].text
+      } catch (error: any) {
+        console.error('Claude API error:', error)
+        // Fall back to echo with agent name
+        return this.getEchoResponse(message, agentType)
+      }
+    } else {
+      // No API key - return helpful echo response
+      return this.getEchoResponse(message, agentType)
+    }
+  }
+
+  /**
+   * Get system prompt for agent
+   */
+  private getSystemPromptForAgent(agentType: string): string {
+    const agent = this.agents.get(agentType)
+    if (!agent) {
+      return 'You are a helpful AI assistant.'
+    }
+
+    const skillsList = Array.from(this.skills.values())
+      .map(s => `- ${s.name}: ${s.description}`)
+      .join('\n')
+
+    return `You are ${agent.name}, ${agent.description}.
+
+Available skills:
+${skillsList}
+
+You have access to these permissions:
+${agent.permissions.join(', ')}
+
+Respond naturally and helpfully.`
+  }
+
+  /**
+   * Get echo response when Claude API is unavailable
+   */
+  private getEchoResponse(message: string, agentType: string): string {
+    const agent = this.agents.get(agentType)
+    const agentName = agent?.name || agentType
+
+    return `[${agentName}] I received your message: "${message}"
+
+Note: The Anthropic API key is not configured. To enable full AI capabilities, add ANTHROPIC_API_KEY to your .env file.
+
+You can get an API key from: https://console.anthropic.com/
+
+Available skills: ${Array.from(this.skills.keys()).join(', ')}
+Available agents: ${Array.from(this.agents.keys()).join(', ')}`
+  }
+
+  /**
+   * Detect which skills were activated based on message and response
+   */
+  private detectActivatedSkills(message: string, response: string): string[] {
+    const activated: string[] = []
+    const messageLower = message.toLowerCase()
+
+    for (const [name, skill] of this.skills.entries()) {
+      // Check if any triggers match
+      const hasMatchingTrigger = skill.triggers.some(trigger =>
+        messageLower.includes(trigger.toLowerCase())
+      )
+
+      if (hasMatchingTrigger) {
+        activated.push(name)
+      }
+    }
+
+    return activated
   }
 
   /**

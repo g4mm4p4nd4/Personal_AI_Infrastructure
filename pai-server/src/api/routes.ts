@@ -53,7 +53,21 @@ export async function registerRoutes(
 
   // List trusted devices
   server.get('/api/devices', async (request: FastifyRequest, reply: FastifyReply) => {
-    // TODO: Verify authentication
+    // Verify authentication via header
+    const authHeader = request.headers.authorization
+    if (!authHeader) {
+      reply.status(401)
+      return { error: 'Authentication required' }
+    }
+
+    const token = authHeader.replace(/^Bearer\s+/i, '')
+    const device = await deviceAuth.verifyDevice(token)
+
+    if (!device) {
+      reply.status(403)
+      return { error: 'Invalid or revoked device token' }
+    }
+
     const devices = deviceAuth.getTrustedDevices()
     return { devices }
   })
