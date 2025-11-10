@@ -1,0 +1,65 @@
+name: PAI Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        bun-version: [1.0.0]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v1
+      with:
+        bun-version: ${{ matrix.bun-version }}
+
+    - name: Install server dependencies
+      working-directory: ./pai-server
+      run: bun install
+
+    - name: Install Google Home dependencies
+      working-directory: ./mcp-servers/google-home
+      run: bun install
+
+    - name: Install PWA dependencies
+      working-directory: ./pai-web
+      run: bun install
+
+    - name: Build PWA
+      working-directory: ./pai-web
+      run: bun run build
+
+    - name: Run tests
+      run: |
+        # Create test .env
+        cp .env.example .env
+
+        # Start server in background
+        cd pai-server
+        bun src/server.ts &
+        SERVER_PID=$!
+
+        # Wait for server to start
+        sleep 5
+
+        # Test health endpoint
+        curl -f http://localhost:3000/health || exit 1
+
+        # Test API endpoints
+        curl -f http://localhost:3000/api/skills || exit 1
+        curl -f http://localhost:3000/api/agents || exit 1
+        curl -f http://localhost:3000/api/voices || exit 1
+
+        # Stop server
+        kill $SERVER_PID
+
+        echo "✓ All tests passed"
